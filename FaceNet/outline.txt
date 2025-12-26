@@ -5,3 +5,26 @@
 3. Build the network and start training on google Colab
 4. Use OpenCV to use the camera
     4.1 Use OpenCV to load in the net weights and build a bounding box around the face it detects
+
+
+
+Face Dataset:
+    Might be easiest to use and has a wide variety of ages and races
+    https://github.com/ox-vgg/vgg_face2?tab=readme-ov-file
+
+    Has easy examples 
+    https://www.kaggle.com/code/hamzaboulahia/fakefacesdetection
+
+
+
+Layout from chat:
+├── notebooks/
+│   ├── data_prep.ipynb
+│   ├── model.ipynb
+│   ├── train.ipynb
+│   └── inference.ipynb
+│
+└── utils/
+    ├── dataset.py
+    ├── model.py
+    └── trainer.py
