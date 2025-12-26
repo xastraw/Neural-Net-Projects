@@ -1,0 +1,7 @@
+
+
+1. Obtain and process dataset of faces
+2. Make sure dataset is in a format the network can train on
+3. Build the network and start training on google Colab
+4. Use OpenCV to use the camera
+    4.1 Use OpenCV to load in the net weights and build a bounding box around the face it detects
