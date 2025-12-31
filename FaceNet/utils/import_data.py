@@ -10,8 +10,10 @@ import torchvision.transforms as T
 # Secures the paths cause im tired of dealing with them
 from pathlib import Path
 ROOT = Path().resolve().parents[1]
-IMG_ROOT = ROOT / "Neural Net Projects" / "FaceNet" / "Dataset" / "WIDER_train" / "images"
+TRAIN_ROOT = ROOT / "Neural Net Projects" / "FaceNet" / "Dataset" / "WIDER_train" / "images"
 ANN_FILE = ROOT / "Neural Net Projects" / "FaceNet" / "Dataset" / "wider_ann" / "wider_face_train_bbx_gt.txt"
+TEST_ROOT = ROOT / "Neural Net Projects" / "FaceNet" / "Dataset" / "WIDER_test" / "images"
+VAL_ROOT = ROOT / "Neural Net Projects" / "FaceNet" / "Dataset" / "WIDER_val" / "images"
 
 #Transform function, resizes the images to 224*224 and scales the bounding boxes accordingly
 #Might need to change later on depending on how the net is built
@@ -22,13 +24,18 @@ TRANSFORM = T.Compose([
     T.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
 ])
 
+
 class WiderFaceDataset(Dataset):
-    def __init__(self, root_dir, annotation_file, img_size=224, transform=None):
+    def __init__(self, root_dir, annotation_file, img_size=224, transform=None, single_face_only=True):
         """
         root_dir: path to WIDER FACE images
         annotation_file: path to annotation file (e.g., 'wider_face_train_bbx_gt.txt')
         img_size: size to resize images
         transform: torchvision transforms for data augmentation
+
+        single_face_only: Will change the dataset from haveing all images (12k) to only having images that have a single face (4k)
+                Setting this as the default because the dataset is huge and hard to train on. Having the dataset only have 1 face in each image makes
+                it a lot easier to train and also quicker
         """
 
         self.root_dir = root_dir
@@ -45,17 +52,36 @@ class WiderFaceDataset(Dataset):
             img_path = lines[i].strip()
             num_boxes = int(lines[i+1].strip())
 
+
             boxes = []
-            if num_boxes > 0:
-                for j in range(num_boxes):
-                    # Each line: x, y, w, h, blur, expression, illumination, invalid, occlusion, pose
-                    bbox_info = list(map(int, lines[i+2+j].strip().split()))
-                    x, y, w, h = bbox_info[:4]
-                    boxes.append([x, y, x+w, y+h])  # convert to x_min, y_min, x_max, y_max
-                i = i + 2 + num_boxes
+            if single_face_only:
+                if num_boxes == 1:
+                    for j in range(num_boxes):
+                        # Each line: x, y, w, h, blur, expression, illumination, invalid, occlusion, pose
+                        bbox_info = list(map(int, lines[i+2+j].strip().split()))
+                        x, y, w, h = bbox_info[:4]
+                        boxes.append([x, y, x+w, y+h])  # convert to x_min, y_min, x_max, y_max
+                    i = i + 2 + num_boxes
+                elif num_boxes == 0:
+                    # For when theres a picture with no bounding box, it takes 3 lines so requires extra work
+                    i += 3
+                    continue
+                else:
+                    i = i + 2 + num_boxes
+                    continue
             else:
-                # For when theres a picture with no bounding box, it takes 3 lines so requires extra work
-                i +=3
+            #old code that grabbed every image
+                if num_boxes > 0:
+                    for j in range(num_boxes):
+                        # Each line: x, y, w, h, blur, expression, illumination, invalid, occlusion, pose
+                        bbox_info = list(map(int, lines[i+2+j].strip().split()))
+                        x, y, w, h = bbox_info[:4]
+                        boxes.append([x, y, x+w, y+h])  # convert to x_min, y_min, x_max, y_max
+                    i = i + 2 + num_boxes
+                else:
+                    # For when theres a picture with no bounding box, it takes 3 lines so requires extra work
+                    i +=3
+            
 
             if len(boxes) == 0: #add pictures with no bounding box to tensor
                 boxes = torch.zeros((0, 4), dtype=torch.float32)
@@ -91,11 +117,11 @@ class WiderFaceDataset(Dataset):
         boxes[:, [0,2]] = boxes[:, [0,2]] * scale_x
         boxes[:, [1,3]] = boxes[:, [1,3]] * scale_y
 
-        
 
         target = {
             'boxes': boxes,
             'num_boxes': boxes.shape[0]
         }
+
         return image, target
 
