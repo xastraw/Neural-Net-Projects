@@ -11,9 +11,10 @@ import torchvision.transforms as T
 from pathlib import Path
 ROOT = Path().resolve().parents[1]
 TRAIN_ROOT = ROOT / "Neural Net Projects" / "FaceNet" / "Dataset" / "WIDER_train" / "images"
-ANN_FILE = ROOT / "Neural Net Projects" / "FaceNet" / "Dataset" / "wider_ann" / "wider_face_train_bbx_gt.txt"
 TEST_ROOT = ROOT / "Neural Net Projects" / "FaceNet" / "Dataset" / "WIDER_test" / "images"
 VAL_ROOT = ROOT / "Neural Net Projects" / "FaceNet" / "Dataset" / "WIDER_val" / "images"
+TRAIN_ANN_FILE = ROOT / "Neural Net Projects" / "FaceNet" / "Dataset" / "wider_ann" / "wider_face_train_bbx_gt.txt"
+VAL_ANN_FILE = ROOT / "Neural Net Projects" / "FaceNet" / "Dataset" / "wider_ann" / "wider_face_val_bbx_gt.txt"
 
 #Transform function, resizes the images to 224*224 and scales the bounding boxes accordingly
 #Might need to change later on depending on how the net is built
