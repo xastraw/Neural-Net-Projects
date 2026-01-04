@@ -3,9 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.ops import nms
 
-#TODO: With the switch to only having 1 bounding box per image (single face images) this anchor code might not be nescessary
-#           The anchors do the math for multiple bbx so this could be changed for something simplier. This anchor code is quite
-#           expensive to run as well, O (n*m) i think.
+
 class AnchorMatcher:
     """Matches ground truth boxes to anchor boxes using IoU (Intersection over Union)"""
     def __init__(self, pos_iou_thresh=0.5, neg_iou_thresh=0.4):
