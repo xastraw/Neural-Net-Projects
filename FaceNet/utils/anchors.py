@@ -4,6 +4,37 @@ import torch.nn.functional as F
 from torchvision.ops import nms
 
 
+class AnchorGeneratorMultiScale:
+    def __init__(self, anchor_sizes=[32, 64]):
+        """
+        Generate anchors at multiple scales.
+        anchor_sizes: list of anchor box sizes
+        """
+        self.anchor_sizes = anchor_sizes
+
+    def generate(self, feature_h, feature_w, stride, device):
+        """
+        Generate anchors for all scales at each spatial location.
+        Returns: [feature_h * feature_w * num_scales, 4]
+        """
+        anchors = []
+        
+        for y in range(feature_h):
+            for x in range(feature_w):
+                cx = (x + 0.5) * stride
+                cy = (y + 0.5) * stride
+                
+                # Generate one anchor per scale at this location
+                for size in self.anchor_sizes:
+                    anchors.append([
+                        cx - size / 2, 
+                        cy - size / 2,
+                        cx + size / 2, 
+                        cy + size / 2
+                    ])
+
+        return torch.tensor(anchors, device=device, dtype=torch.float32)
+
 class AnchorGeneratorSingle:
     def __init__(self, anchor_size=64):
         self.anchor_size = anchor_size
@@ -78,8 +109,6 @@ def decode_predictions(pred_offsets, anchors):
     return pred_boxes
 
 
-
-####loss code but meant to penalize badd IoU values
 def compute_iou_single(pred_box, gt_box):
     """
     Compute IoU between a single predicted box and ground-truth box.
@@ -111,9 +140,9 @@ def compute_loss_single_face(outputs, targets, anchors, stride):
     B, _, H, W = outputs.shape
     outputs = outputs.permute(0, 2, 3, 1).reshape(B, -1, 5)
 
-    weight_reg = 5.0
+    weight_reg = 3.0
     weight_conf = 1.0
-    weight_iou = 2.0  # IoU penalty weight
+    weight_iou = 1.5  # IoU penalty weight
 
     total_loss = 0.0
     total_reg_loss = 0.0
@@ -196,105 +225,58 @@ def compute_loss_single_face(outputs, targets, anchors, stride):
 
 
 
-#original loss code
-def compute_loss_single_face1(outputs, targets, anchors, stride):
-    """
-    IMPROVED loss function with better debugging and balance.
-    outputs: [B, 5, H, W] -> (dx, dy, dw, dh, conf)
-    targets: list of dicts with 'boxes'
-    anchors: [H*W, 4]
-    """
-    B, _, H, W = outputs.shape
-    outputs = outputs.permute(0, 2, 3, 1).reshape(B, -1, 5)
-
-    # CHANGED: More balanced weights
-    weight_reg = 5.0      # Focus on getting boxes right
-    weight_conf = 1.0     # But don't ignore confidence
-
-    total_loss = 0.0
-    total_reg_loss = 0.0
-    total_conf_loss = 0.0
-
-    for i in range(B):
-        gt = targets[i]['boxes'][0]  # single face
-        gt = gt.to(outputs.device)
-
-        # Find best anchor based on IoU
-        ious = compute_iou(anchors, gt.unsqueeze(0))
-        best_idx = ious.argmax()
-        best_iou = ious[best_idx]
-
-        # DEBUGGING: Check if its matching reasonable anchors
-        # Uncomment to debug:
-        # if i == 0:
-        #     print(f"Best IoU: {best_iou:.4f}, GT box: {gt}")
-
-        # Get anchor parameters
-        ax1, ay1, ax2, ay2 = anchors[best_idx]
-        acx = (ax1 + ax2) / 2
-        acy = (ay1 + ay2) / 2
-        aw = ax2 - ax1
-        ah = ay2 - ay1
-
-        # Get ground truth parameters
-        gx1, gy1, gx2, gy2 = gt
-        gcx = (gx1 + gx2) / 2
-        gcy = (gy1 + gy2) / 2
-        gw = gx2 - gx1
-        gh = gy2 - gy1
-
-        # CHANGED: Add epsilon to prevent log(0)
-        gw = torch.clamp(gw, min=1.0)
-        gh = torch.clamp(gh, min=1.0)
-        aw = torch.clamp(aw, min=1.0)
-        ah = torch.clamp(ah, min=1.0)
-
-        # Compute target offsets
-        target_offsets = torch.tensor([
-            (gcx - acx) / aw,
-            (gcy - acy) / ah,
-            torch.log(gw / aw),
-            torch.log(gh / ah)
-        ], device=outputs.device)
-
-        # CHANGED: Clamp extreme values
-        target_offsets = torch.clamp(target_offsets, min=-5.0, max=5.0)
-
-        pred_offsets = outputs[i, best_idx, :4]
-
-        # === HARD NEGATIVE MINING ===
-        conf_targets = torch.zeros_like(outputs[i, :, 4])
-        conf_targets[best_idx] = 1.0
-        
-        # Select hard negatives
-        all_conf_scores = outputs[i, :, 4].clone()
-        all_conf_scores[best_idx] = -float('inf')
-        
-        # CHANGED: Use 5:1 ratio for more negative examples
-        num_hard_negs = min(5, len(all_conf_scores) - 1)
-        hard_neg_indices = torch.topk(all_conf_scores, num_hard_negs)[1]
-        
-        selected_indices = torch.cat([best_idx.unsqueeze(0), hard_neg_indices])
-        
-        conf_loss = F.binary_cross_entropy_with_logits(
-            outputs[i, selected_indices, 4], 
-            conf_targets[selected_indices]
-        )
-        
-        # Regression loss (only for positive anchor)
-        reg_loss = F.smooth_l1_loss(pred_offsets, target_offsets)
-        
-        total_reg_loss += reg_loss.item()
-        total_conf_loss += conf_loss.item()
-        
-        # Combine losses
-        total_loss += (weight_reg * reg_loss) + (weight_conf * conf_loss)
-
-    # Print average losses for debugging
-    avg_reg = total_reg_loss / B
-    avg_conf = total_conf_loss / B
+# Computes the intersection over union (IoU) for a single face image. On a scale of 0-1, a higher number means the boxes are more accurate
+def anchor_validate_iou(net, val_loader, device, anchors, conf_thresh=0.01, img_size=224):
+    net.eval()
+    iou_sum = 0.0
+    count = 0
     
-    return total_loss / B, avg_reg, avg_conf
+    # Track how many predictions we're getting
+    total_samples = 0
+    samples_with_predictions = 0
 
+    with torch.no_grad():
+        for images, targets in val_loader:
+            images = torch.stack(images).to(device)
+            outputs = net(images)
 
+            B, C, H, W = outputs.shape
+            outputs = outputs.permute(0, 2, 3, 1).reshape(B, -1, 5)
 
+            for i in range(B):
+                total_samples += 1
+                pred = outputs[i]  # [H*W, 5]
+
+                # Decode predictions properly
+                pred_offsets = pred[:, :4]
+                pred_scores = torch.sigmoid(pred[:, 4])
+                
+                # Decode to actual boxes
+                pred_boxes = decode_predictions(pred_offsets, anchors)
+
+                # Confidence filter
+                keep = pred_scores > conf_thresh
+                if keep.sum() == 0:
+                    continue
+
+                samples_with_predictions += 1
+                pred_boxes = pred_boxes[keep]
+                pred_scores = pred_scores[keep]
+
+                # Pick best box
+                best_idx = pred_scores.argmax()
+                pred_box = pred_boxes[best_idx]
+
+                # Get GT box
+                gt_boxes = targets[i]['boxes']
+                if gt_boxes.shape[0] == 0:
+                    continue
+                gt_box = gt_boxes[0].to(device)
+
+                # Compute IoU
+                iou = compute_iou(pred_box.unsqueeze(0), gt_box.unsqueeze(0))
+                iou_sum += iou.item()
+                count += 1
+
+    net.train()
+    return iou_sum / max(count, 1)
