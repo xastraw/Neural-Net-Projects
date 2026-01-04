@@ -1,19 +1,20 @@
 
 
 1. Obtain and process dataset of faces
+    -beleive its done, at least the images are loaded into tensors
 2. Make sure dataset is in a format the network can train on
 3. Build the network and start training on google Colab
 4. Use OpenCV to use the camera
     4.1 Use OpenCV to load in the net weights and build a bounding box around the face it detects
 
+---------------------
+The utils folder is for python files for easy importing and editing
+The notebooks folder is for all jupyter notebooks that are used for testing and building the model. 
+Only put standalone notebooks inside the notebooks folder because if you don't then the notebook cant import the utils
+---------------------
 
-
-Face Dataset:
-    Might be easiest to use and has a wide variety of ages and races
-    https://github.com/ox-vgg/vgg_face2?tab=readme-ov-file
-
-    Has easy examples 
-    https://www.kaggle.com/code/hamzaboulahia/fakefacesdetection
+Face Dataset download: http://shuoyang1213.me/WIDERFACE/index.html
+(This takes a minute to download and extract)
 
 
 
